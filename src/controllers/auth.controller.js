@@ -16,7 +16,7 @@ exports.login = async (req, res) => {
       return res.status(400).json({ message: 'Please provide GR number and password' });
     }
 
-    // Check for admin login - using GR number "12345"
+    // Check for admin login - using GR number "21435"
     if (grNumber === '21435') {
       // Hard-coded admin credentials
       if (password === 'admin929678') {
@@ -35,7 +35,7 @@ exports.login = async (req, res) => {
             id: 'admin-id',
             email: 'tahiralmadni@gmail.com',
             name: 'Admin',
-            grNumber: '12345',
+            grNumber: '21435',
             role: 'admin',
             lastLogin: Date.now()
           }
