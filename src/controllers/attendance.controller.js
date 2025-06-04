@@ -5,24 +5,72 @@ const mongoose = require('mongoose');
 // Get all attendance records
 exports.getAllAttendance = async (req, res) => {
   try {
-    const { startDate, endDate, teacherId } = req.query;
+    const { startDate, endDate, teacherId, status } = req.query;
     let query = {};
     
     // Filter by date range if provided
     if (startDate && endDate) {
-      query.date = { $gte: startDate, $lte: endDate };
+      query.date = { $gte: new Date(startDate), $lte: new Date(endDate) };
     }
     
     // Filter by teacher if provided
-    if (teacherId) {
-      query.teacherId = teacherId;
+    if (teacherId && teacherId !== 'all' && teacherId !== 'undefined') {
+      query.$or = [
+        { teacher: teacherId },
+        { teacherId: teacherId }
+      ];
     }
     
-    const attendance = await Attendance.find(query)
-      .select('teacherId teacherName date status timeIn timeOut workHours salaryDeduction comments')
-      .sort({ date: -1, teacherName: 1 });
+    // Filter by status if provided
+    if (status && status !== 'all' && status !== 'undefined') {
+      query.status = status;
+    }
     
-    res.status(200).json({ attendance });
+    console.log("Attendance query:", JSON.stringify(query));
+    
+    // Get attendance records with populated teacher information
+    const attendance = await Attendance.find(query)
+      .populate('teacher', 'name designation grNumber')
+      .sort({ date: -1 });
+    
+    // Format records to ensure consistency in the response
+    const formattedAttendance = attendance.map(record => {
+      const recordObj = record.toObject();
+      
+      // Format the date as YYYY-MM-DD
+      const dateObj = new Date(recordObj.date);
+      const formattedDate = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
+      
+      // Ensure we have the teacher name from either method
+      const teacherName = record.teacher?.name || record.teacherName;
+      
+      return {
+        ...recordObj,
+        date: formattedDate,
+        teacherName: teacherName,
+        timeIn: record.checkIn || record.timeIn,
+        timeOut: record.checkOut || record.timeOut,
+        checkIn: record.checkIn || record.timeIn,
+        checkOut: record.checkOut || record.timeOut
+      };
+    });
+    
+    // Count records by status
+    const statusCounts = {
+      total: formattedAttendance.length,
+      present: formattedAttendance.filter(record => record.status === 'present').length,
+      absent: formattedAttendance.filter(record => record.status === 'absent').length,
+      leave: formattedAttendance.filter(record => record.status === 'leave').length,
+      late: formattedAttendance.filter(record => record.status === 'late').length,
+      halfDay: formattedAttendance.filter(record => record.status === 'half-day').length
+    };
+    
+    res.status(200).json({ 
+      attendance: formattedAttendance,
+      counts: statusCounts,
+      success: true,
+      count: formattedAttendance.length
+    });
   } catch (error) {
     console.error('Error getting attendance records:', error);
     res.status(500).json({ message: 'Server error getting attendance records' });
@@ -120,20 +168,26 @@ exports.addOrUpdateAttendance = async (req, res) => {
       return res.status(404).json({ message: 'Teacher not found' });
     }
     
-    // Check if record for this teacher and date already exists
-    let attendance = await Attendance.findOne({ 
-      teacher: teacherId,  // Use 'teacher' field to match schema
-      date: new Date(date)
-    });
+    // Parse date properly to handle date comparison correctly
+    const attendanceDate = new Date(date);
+    attendanceDate.setHours(0, 0, 0, 0);  // Normalize time part to midnight
     
-    // Format date for consistent output
-    const formattedDate = new Date(date);
+    // Check if record for this teacher and date already exists
+    // Try both field patterns since there might be legacy data
+    let attendance = await Attendance.findOne({
+      $or: [
+        { teacher: teacherId, date: { $gte: attendanceDate, $lt: new Date(attendanceDate.getTime() + 24 * 60 * 60 * 1000) } },
+        { teacherId: teacherId, date: { $gte: attendanceDate, $lt: new Date(attendanceDate.getTime() + 24 * 60 * 60 * 1000) } }
+      ]
+    });
     
     const finalTimeIn = timeIn || checkIn || null;
     const finalTimeOut = timeOut || checkOut || null;
     const finalComment = comment || comments || null;
     
     if (attendance) {
+      console.log("Found existing attendance record:", attendance._id);
+      
       // Update existing record
       attendance.status = status;
       // Update time fields with whichever naming convention was provided
@@ -146,50 +200,66 @@ exports.addOrUpdateAttendance = async (req, res) => {
       attendance.salaryDeduction = salaryDeduction !== undefined ? salaryDeduction : attendance.salaryDeduction;
       attendance.updatedAt = new Date();
       
-      await attendance.save();
-      
-      return res.status(200).json({
-        message: 'Attendance record updated successfully',
-        attendance
-      });
+      try {
+        await attendance.save();
+        
+        return res.status(200).json({
+          message: 'Attendance record updated successfully',
+          attendance
+        });
+      } catch (saveError) {
+        console.error('Error saving attendance update:', saveError);
+        return res.status(500).json({ 
+          message: 'Server error updating attendance record',
+          error: saveError.message
+        });
+      }
     } else {
       // Create new record
-      attendance = new Attendance({
-        teacher: teacherId,  // Use 'teacher' field to match schema
-        date: formattedDate,
-        status,
-        timeIn: finalTimeIn,
-        timeOut: finalTimeOut,
-        checkIn: finalTimeIn,
-        checkOut: finalTimeOut,
-        comment: finalComment,
-        workHours: workHours || 0,
-        salaryDeduction: salaryDeduction || 0
-      });
-      
-      console.log("Creating new attendance record:", attendance);
-      
-      await attendance.save();
-      
-      return res.status(201).json({
-        message: 'Attendance record created successfully',
-        attendance: {
-          _id: attendance._id,
-          teacher: attendance.teacher,
-          teacherName: teacher.name,
-          date: attendance.date,
-          status: attendance.status,
-          timeIn: attendance.timeIn || null,
-          timeOut: attendance.timeOut || null,
-          checkIn: attendance.checkIn || null,
-          checkOut: attendance.checkOut || null,
-          comment: attendance.comment || null,
-          workHours: attendance.workHours || 0,
-          salaryDeduction: attendance.salaryDeduction || 0,
-          createdAt: attendance.createdAt,
-          updatedAt: attendance.updatedAt
-        }
-      });
+      try {
+        attendance = new Attendance({
+          teacher: teacherId,  // Use 'teacher' field to match schema
+          date: attendanceDate,
+          status,
+          timeIn: finalTimeIn,
+          timeOut: finalTimeOut,
+          checkIn: finalTimeIn,
+          checkOut: finalTimeOut,
+          comment: finalComment,
+          workHours: workHours || 0,
+          salaryDeduction: salaryDeduction || 0
+        });
+        
+        console.log("Creating new attendance record:", attendance);
+        
+        await attendance.save();
+        
+        return res.status(201).json({
+          message: 'Attendance record created successfully',
+          attendance: {
+            _id: attendance._id,
+            teacher: attendance.teacher,
+            teacherName: teacher.name,
+            date: attendance.date,
+            status: attendance.status,
+            timeIn: attendance.timeIn || null,
+            timeOut: attendance.timeOut || null,
+            checkIn: attendance.checkIn || null,
+            checkOut: attendance.checkOut || null,
+            comment: attendance.comment || null,
+            workHours: attendance.workHours || 0,
+            salaryDeduction: attendance.salaryDeduction || 0,
+            createdAt: attendance.createdAt,
+            updatedAt: attendance.updatedAt
+          }
+        });
+      } catch (createError) {
+        console.error('Error creating new attendance record:', createError);
+        return res.status(500).json({ 
+          message: 'Server error creating attendance record',
+          error: createError.message
+        });
+      }
     }
   } catch (error) {
     console.error('Error adding/updating attendance record:', error);
@@ -199,7 +269,11 @@ exports.addOrUpdateAttendance = async (req, res) => {
       return res.status(400).json({ message: 'Invalid teacher ID format' });
     }
     
-    res.status(500).json({ message: 'Server error processing attendance record' });
+    // More detailed error message
+    res.status(500).json({ 
+      message: 'Server error processing attendance record',
+      error: error.message
+    });
   }
 };
 
@@ -538,7 +612,7 @@ exports.getAttendanceForTeacher = async (req, res) => {
 // Get attendance records by date
 exports.getAttendanceByDate = async (req, res) => {
   try {
-    const { date } = req.query;
+    const { date, teacherId, status } = req.query;
     
     if (!date) {
       return res.status(400).json({ message: 'Date is required' });
@@ -549,20 +623,48 @@ exports.getAttendanceByDate = async (req, res) => {
     const nextDay = new Date(targetDate);
     nextDay.setDate(nextDay.getDate() + 1);
     
-    const attendanceRecords = await Attendance.find({
+    // Build query
+    let query = {
       date: {
         $gte: targetDate,
         $lt: nextDay
       }
-    })
-    .populate('teacher', 'name designation')
+    };
+    
+    // Filter by teacher if provided
+    if (teacherId && teacherId !== 'all' && teacherId !== 'undefined') {
+      query.$or = [
+        { teacher: teacherId },
+        { teacherId: teacherId }
+      ];
+    }
+    
+    // Filter by status if provided
+    if (status && status !== 'all' && status !== 'undefined') {
+      query.status = status;
+    }
+    
+    console.log("Attendance by date query:", JSON.stringify(query));
+    
+    const attendanceRecords = await Attendance.find(query)
+    .populate('teacher', 'name designation grNumber')
     .sort('teacher.name');
     
     // Ensure both field naming conventions are available in the response
     const formattedRecords = attendanceRecords.map(record => {
       const recordObj = record.toObject();
+      
+      // Format the date for consistent output
+      const dateObj = new Date(recordObj.date);
+      const formattedDate = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
+      
+      // Ensure teacher name exists
+      const teacherName = record.teacher?.name || record.teacherName;
+      
       return {
         ...recordObj,
+        date: formattedDate,
+        teacherName: teacherName,
         timeIn: record.checkIn || record.timeIn,
         timeOut: record.checkOut || record.timeOut,
         checkIn: record.checkIn || record.timeIn,
@@ -570,7 +672,22 @@ exports.getAttendanceByDate = async (req, res) => {
       };
     });
     
-    res.status(200).json({ attendanceRecords: formattedRecords });
+    // Count records by status
+    const statusCounts = {
+      total: formattedRecords.length,
+      present: formattedRecords.filter(record => record.status === 'present').length,
+      absent: formattedRecords.filter(record => record.status === 'absent').length,
+      leave: formattedRecords.filter(record => record.status === 'leave').length,
+      late: formattedRecords.filter(record => record.status === 'late').length,
+      halfDay: formattedRecords.filter(record => record.status === 'half-day').length
+    };
+    
+    res.status(200).json({ 
+      success: true, 
+      attendanceRecords: formattedRecords,
+      counts: statusCounts,
+      count: formattedRecords.length 
+    });
   } catch (error) {
     console.error('Error getting attendance by date:', error);
     res.status(500).json({ message: 'Server error getting attendance' });
@@ -624,5 +741,119 @@ exports.updateAttendance = async (req, res) => {
     }
     
     res.status(500).json({ message: 'Server error updating attendance' });
+  }
+};
+
+// Get all teachers' attendance (admin only)
+exports.getAllTeachersAttendance = async (req, res) => {
+  try {
+    // This endpoint is intended for admin use only
+    const { startDate, endDate, status, teacherId } = req.query;
+    
+    let query = {};
+    
+    // Filter by date range if provided
+    if (startDate && endDate) {
+      const startDateObj = new Date(startDate);
+      startDateObj.setHours(0, 0, 0, 0);
+      
+      const endDateObj = new Date(endDate);
+      endDateObj.setHours(23, 59, 59, 999);
+      
+      query.date = {
+        $gte: startDateObj,
+        $lte: endDateObj
+      };
+    }
+    
+    // Filter by status if provided
+    if (status && status !== 'all' && status !== 'undefined') {
+      query.status = status;
+    }
+    
+    // Filter by teacher if provided
+    if (teacherId && teacherId !== 'all' && teacherId !== 'undefined') {
+      query.$or = [
+        { teacher: teacherId },
+        { teacherId: teacherId }
+      ];
+    }
+    
+    console.log("All teachers attendance query:", JSON.stringify(query));
+    
+    // Get all teachers first to ensure we have complete data
+    let teachers;
+    if (teacherId && teacherId !== 'all' && teacherId !== 'undefined') {
+      teachers = await Teacher.find({ _id: teacherId }).select('_id name grNumber designation');
+    } else {
+      teachers = await Teacher.find().select('_id name grNumber designation');
+    }
+    
+    // Get attendance records for the period
+    const attendanceRecords = await Attendance.find(query)
+      .populate('teacher', 'name grNumber designation')
+      .sort({ date: -1 });
+    
+    // Format and organize by teacher
+    const teacherAttendanceMap = {};
+    
+    // Initialize with all teachers (even those without attendance)
+    teachers.forEach(teacher => {
+      teacherAttendanceMap[teacher._id] = {
+        teacherId: teacher._id,
+        teacherName: teacher.name,
+        grNumber: teacher.grNumber,
+        designation: teacher.designation,
+        attendanceRecords: []
+      };
+    });
+    
+    // Add attendance records to their respective teachers
+    attendanceRecords.forEach(record => {
+      const teacherId = record.teacher?._id.toString() || record.teacherId?.toString();
+      
+      if (teacherId && teacherAttendanceMap[teacherId]) {
+        // Format the date
+        const dateObj = new Date(record.date);
+        const formattedDate = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
+        
+        teacherAttendanceMap[teacherId].attendanceRecords.push({
+          _id: record._id,
+          date: formattedDate,
+          status: record.status,
+          timeIn: record.checkIn || record.timeIn,
+          timeOut: record.checkOut || record.timeOut,
+          workHours: record.workHours || 0,
+          salaryDeduction: record.salaryDeduction || 0,
+          comment: record.comment
+        });
+      }
+    });
+    
+    // Convert map to array for response
+    const teachersAttendance = Object.values(teacherAttendanceMap);
+    
+    // Calculate status counts across all records
+    const allRecords = attendanceRecords || [];
+    const statusCounts = {
+      total: allRecords.length,
+      present: allRecords.filter(record => record.status === 'present').length,
+      absent: allRecords.filter(record => record.status === 'absent').length,
+      leave: allRecords.filter(record => record.status === 'leave').length,
+      late: allRecords.filter(record => record.status === 'late').length,
+      halfDay: allRecords.filter(record => record.status === 'half-day').length
+    };
+    
+    res.status(200).json({
+      success: true,
+      teachersAttendance,
+      counts: statusCounts,
+      totalTeachers: teachers.length,
+      totalRecords: attendanceRecords.length
+    });
+    
+  } catch (error) {
+    console.error('Error getting all teachers attendance:', error);
+    res.status(500).json({ message: 'Server error getting teachers attendance' });
   }
 }; 

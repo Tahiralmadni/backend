@@ -7,6 +7,12 @@ const router = express.Router();
 // Get all attendance records (admin only)
 router.get('/', authMiddleware, adminOnly, attendanceController.getAllAttendance);
 
+// Get all teachers' attendance (admin only)
+router.get('/all-teachers', authMiddleware, adminOnly, attendanceController.getAllTeachersAttendance);
+
+// Get teacher attendance records by date (admin only)
+router.get('/by-date', authMiddleware, adminOnly, attendanceController.getAttendanceByDate);
+
 // Get attendance for a specific teacher
 router.get('/teacher/:teacherId', authMiddleware, attendanceController.getTeacherAttendance);
 

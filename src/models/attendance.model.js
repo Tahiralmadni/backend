@@ -6,6 +6,11 @@ const AttendanceSchema = new mongoose.Schema({
     ref: 'Teacher',
     required: true
   },
+  // For backwards compatibility
+  teacherId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Teacher'
+  },
   date: {
     type: Date,
     required: true,
@@ -74,8 +79,35 @@ AttendanceSchema.pre('save', function(next) {
     this.set('checkOut', finalValue);
     this.set('timeOut', finalValue);
   }
+  
+  // For backwards compatibility - ensure teacherId is set if teacher is provided
+  if (this.isModified('teacher') && this.teacher) {
+    this.teacherId = this.teacher;
+  }
+  
+  // Normalize the date by setting time to midnight
+  if (this.isModified('date')) {
+    const normalizedDate = new Date(this.date);
+    normalizedDate.setHours(0, 0, 0, 0);
+    this.date = normalizedDate;
+  }
 
   next();
+});
+
+// Helper method to format the date as YYYY-MM-DD
+AttendanceSchema.methods.getFormattedDate = function() {
+  const date = this.date;
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+};
+
+// Custom error handling for duplicate key error
+AttendanceSchema.post('save', function(error, doc, next) {
+  if (error.name === 'MongoServerError' && error.code === 11000) {
+    next(new Error('An attendance record already exists for this teacher on this date. Please update the existing record instead.'));
+  } else {
+    next(error);
+  }
 });
 
 // Compound index to ensure one record per teacher per day

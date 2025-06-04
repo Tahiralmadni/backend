@@ -17,9 +17,9 @@ exports.login = async (req, res) => {
     }
 
     // Check for admin login - using GR number "12345"
-    if (grNumber === '12345') {
+    if (grNumber === '21435') {
       // Hard-coded admin credentials
-      if (password === 'tahir123') {
+      if (password === 'admin929678') {
         // Generate token for admin
         const token = jwt.sign(
           { id: 'admin-id', email: 'tahiralmadni@gmail.com', name: 'Admin', role: 'admin' },
