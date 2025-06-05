@@ -174,7 +174,7 @@ exports.addOrUpdateAttendance = async (req, res) => {
     
     // Check if record for this teacher and date already exists
     // Try both field patterns since there might be legacy data
-    let attendance = await Attendance.findOne({
+    let attendance = await Attendance.findOne({ 
       $or: [
         { teacher: teacherId, date: { $gte: attendanceDate, $lt: new Date(attendanceDate.getTime() + 24 * 60 * 60 * 1000) } },
         { teacherId: teacherId, date: { $gte: attendanceDate, $lt: new Date(attendanceDate.getTime() + 24 * 60 * 60 * 1000) } }
@@ -201,12 +201,12 @@ exports.addOrUpdateAttendance = async (req, res) => {
       attendance.updatedAt = new Date();
       
       try {
-        await attendance.save();
-        
-        return res.status(200).json({
-          message: 'Attendance record updated successfully',
-          attendance
-        });
+      await attendance.save();
+      
+      return res.status(200).json({
+        message: 'Attendance record updated successfully',
+        attendance
+      });
       } catch (saveError) {
         console.error('Error saving attendance update:', saveError);
         return res.status(500).json({ 
@@ -217,42 +217,42 @@ exports.addOrUpdateAttendance = async (req, res) => {
     } else {
       // Create new record
       try {
-        attendance = new Attendance({
-          teacher: teacherId,  // Use 'teacher' field to match schema
+      attendance = new Attendance({
+        teacher: teacherId,  // Use 'teacher' field to match schema
           date: attendanceDate,
-          status,
-          timeIn: finalTimeIn,
-          timeOut: finalTimeOut,
-          checkIn: finalTimeIn,
-          checkOut: finalTimeOut,
-          comment: finalComment,
-          workHours: workHours || 0,
-          salaryDeduction: salaryDeduction || 0
-        });
-        
-        console.log("Creating new attendance record:", attendance);
-        
-        await attendance.save();
-        
-        return res.status(201).json({
-          message: 'Attendance record created successfully',
-          attendance: {
-            _id: attendance._id,
-            teacher: attendance.teacher,
-            teacherName: teacher.name,
-            date: attendance.date,
-            status: attendance.status,
-            timeIn: attendance.timeIn || null,
-            timeOut: attendance.timeOut || null,
-            checkIn: attendance.checkIn || null,
-            checkOut: attendance.checkOut || null,
-            comment: attendance.comment || null,
-            workHours: attendance.workHours || 0,
-            salaryDeduction: attendance.salaryDeduction || 0,
-            createdAt: attendance.createdAt,
-            updatedAt: attendance.updatedAt
-          }
-        });
+        status,
+        timeIn: finalTimeIn,
+        timeOut: finalTimeOut,
+        checkIn: finalTimeIn,
+        checkOut: finalTimeOut,
+        comment: finalComment,
+        workHours: workHours || 0,
+        salaryDeduction: salaryDeduction || 0
+      });
+      
+      console.log("Creating new attendance record:", attendance);
+      
+      await attendance.save();
+      
+      return res.status(201).json({
+        message: 'Attendance record created successfully',
+        attendance: {
+          _id: attendance._id,
+          teacher: attendance.teacher,
+          teacherName: teacher.name,
+          date: attendance.date,
+          status: attendance.status,
+          timeIn: attendance.timeIn || null,
+          timeOut: attendance.timeOut || null,
+          checkIn: attendance.checkIn || null,
+          checkOut: attendance.checkOut || null,
+          comment: attendance.comment || null,
+          workHours: attendance.workHours || 0,
+          salaryDeduction: attendance.salaryDeduction || 0,
+          createdAt: attendance.createdAt,
+          updatedAt: attendance.updatedAt
+        }
+      });
       } catch (createError) {
         console.error('Error creating new attendance record:', createError);
         return res.status(500).json({ 
