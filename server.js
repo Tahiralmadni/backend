@@ -31,6 +31,15 @@ mongoose.connect(config.MONGODB_URI)
   .then(() => console.log('MongoDB connected successfully'))
   .catch(err => console.error('MongoDB connection error:', err));
 
+// Test endpoint (no auth required)
+app.get('/api/test', (req, res) => {
+  console.log('Test endpoint called');
+  res.json({ 
+    message: 'API is working',
+    timestamp: new Date().toISOString() 
+  });
+});
+
 // Define routes
 app.use('/api/auth', authRoutes);
 app.use('/api/teachers', teacherRoutes);

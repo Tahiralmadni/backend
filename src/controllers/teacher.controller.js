@@ -7,9 +7,27 @@ exports.getAllTeachers = async (req, res) => {
     console.log('GET ALL TEACHERS: Started processing request');
     console.log('GET ALL TEACHERS: User info:', req.user);
     
-    const teachers = await Teacher.find().select('-password').sort('name');
+    // Check if MongoDB is connected
+    if (mongoose.connection.readyState !== 1) {
+      console.error('GET ALL TEACHERS: MongoDB not connected');
+      return res.status(500).json({ 
+        message: 'Database connection error', 
+        mongoState: mongoose.connection.readyState
+      });
+    }
     
-    console.log(`GET ALL TEACHERS: Found ${teachers.length} teachers`);
+    // Try finding teachers with error handling
+    let teachers;
+    try {
+      teachers = await Teacher.find().select('-password').sort('name');
+      console.log(`GET ALL TEACHERS: Found ${teachers.length} teachers`);
+    } catch (dbError) {
+      console.error('GET ALL TEACHERS: Database query error:', dbError);
+      return res.status(500).json({ 
+        message: 'Error querying database',
+        error: dbError.message
+      });
+    }
     
     // Debug: Check each teacher's monthlySalary field
     teachers.forEach(teacher => {
