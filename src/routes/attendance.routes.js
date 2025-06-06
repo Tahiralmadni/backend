@@ -17,10 +17,14 @@ router.get('/by-date', authMiddleware, adminOnly, attendanceController.getAttend
 router.get('/teacher/:teacherId', authMiddleware, attendanceController.getTeacherAttendance);
 
 // Add or update attendance record
-router.post('/', authMiddleware, attendanceController.addOrUpdateAttendance);
+router.post('/', authMiddleware, attendanceController.markAttendance);
 
-// Delete attendance record (allow teachers to delete their own records)
-router.delete('/:id', authMiddleware, attendanceController.deleteAttendance);
+// Process holidays for all teachers or specific teacher
+router.post('/process-holidays', authMiddleware, adminOnly, attendanceController.processHolidays);
+router.post('/process-holidays/:teacherId', authMiddleware, attendanceController.processHolidays);
+
+// Delete attendance record (admin only)
+router.delete('/:id', authMiddleware, adminOnly, attendanceController.deleteAttendance);
 
 // Get attendance summary for a teacher by month/year
 router.get('/summary/teacher/:teacherId', authMiddleware, attendanceController.getAttendanceSummary);
