@@ -4,7 +4,12 @@ const mongoose = require('mongoose');
 // Get all teachers
 exports.getAllTeachers = async (req, res) => {
   try {
+    console.log('GET ALL TEACHERS: Started processing request');
+    console.log('GET ALL TEACHERS: User info:', req.user);
+    
     const teachers = await Teacher.find().select('-password').sort('name');
+    
+    console.log(`GET ALL TEACHERS: Found ${teachers.length} teachers`);
     
     // Debug: Check each teacher's monthlySalary field
     teachers.forEach(teacher => {
@@ -14,7 +19,11 @@ exports.getAllTeachers = async (req, res) => {
     res.status(200).json({ teachers });
   } catch (error) {
     console.error('Error getting teachers:', error);
-    res.status(500).json({ message: 'Server error getting teachers' });
+    res.status(500).json({ 
+      message: 'Server error getting teachers',
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 };
 

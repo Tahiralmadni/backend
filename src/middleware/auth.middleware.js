@@ -11,6 +11,7 @@ const authMiddleware = (req, res, next) => {
   
   // Try to get token from different possible headers
   let token = req.header('x-auth-token') || 
+              req.header('Authorization') || 
               req.header('authorization') || 
               req.header('token');
   
@@ -36,15 +37,23 @@ const authMiddleware = (req, res, next) => {
     next();
   } catch (err) {
     console.error('AUTH MIDDLEWARE: Token verification failed:', err.message);
-    res.status(401).json({ message: 'Token is not valid' });
+    res.status(401).json({ message: 'Token is not valid', error: err.message });
   }
 };
 
 // Middleware to check admin role
 const adminOnly = (req, res, next) => {
-  if (req.user && req.user.role === 'admin') {
+  console.log('ADMIN ONLY MIDDLEWARE: Checking admin role for user:', req.user);
+  
+  if (!req.user) {
+    return res.status(401).json({ message: 'User not authenticated' });
+  }
+  
+  if (req.user.role === 'admin') {
+    console.log('ADMIN ONLY MIDDLEWARE: Admin access granted');
     next();
   } else {
+    console.log('ADMIN ONLY MIDDLEWARE: Access denied, user role:', req.user.role);
     res.status(403).json({ message: 'Access denied. Admin privileges required' });
   }
 };
