@@ -13,13 +13,16 @@ const attendanceRoutes = require('./src/routes/attendance.routes');
 const app = express();
 const PORT = config.PORT;
 
-// Middleware
-app.use(cors({
+// CORS Options
+const corsOptions = {
   origin: ['https://hazri-system.vercel.app', 'http://localhost:5173'],
+  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token']
-}));
+  optionsSuccessStatus: 204,
+};
+
+// Middleware
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(morgan('dev'));
 
